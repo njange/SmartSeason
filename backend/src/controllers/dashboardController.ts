@@ -5,6 +5,7 @@ import { getAdminDashboardData, getAgentDashboardData } from '../services/dashbo
 export async function adminDashboardController(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const data = await getAdminDashboardData({
+      userId: _req.user!.id,
       noUpdateDaysThreshold: env.atRiskNoUpdateDays,
       stuckStageDaysThreshold: env.atRiskStuckStageDays
     });

@@ -4,10 +4,11 @@ import { getLastUpdateByFieldIds } from '../repositories/updateRepository';
 import { computeFieldStatus } from './fieldService';
 
 export async function getAdminDashboardData(input: {
+  userId: string;
   noUpdateDaysThreshold: number;
   stuckStageDaysThreshold: number;
 }) {
-  const fields = await listFieldsScoped({ userId: '', role: 'ADMIN' });
+  const fields = await listFieldsScoped({ userId: input.userId, role: 'ADMIN' });
   const lastUpdates = await getLastUpdateByFieldIds(fields.map((field) => field.id));
 
   const statusCount = {

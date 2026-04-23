@@ -3,7 +3,9 @@ import { env } from '../config/env';
 import { JwtPayload } from '../types';
 
 export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
+  return jwt.sign(payload, env.jwtSecret, {
+    expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn']
+  });
 }
 
 export function verifyToken(token: string): JwtPayload {

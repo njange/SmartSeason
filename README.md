@@ -1,162 +1,261 @@
-# Shamba Crop Field Tracking Monorepo
+# SmartSeason Field Monitoring System
 
-A full-stack crop field tracking system with:
+## Submission Overview
 
-- `frontend`: React + Vite + TypeScript + Tailwind CSS
-- `backend`: Node.js + Express + TypeScript + PostgreSQL
-- Dockerized deployment with `docker-compose`
+This repository contains a full stack crop field monitoring system built for the Full Stack Developer Technical Assessment.
 
-## Architecture
+Tech stack used:
 
-Monorepo structure:
+- Frontend: React, Vite, TypeScript, Tailwind CSS
+- Backend: Node.js, Express, TypeScript
+- Database: PostgreSQL
+- Auth: JWT with role-based authorization
+- Deployment: Docker Compose and GitHub Actions CI/CD
 
-- `frontend` for UI
-- `backend` for API and business logic
-- `docker-compose.yml` for local reproducible deployment
+Repository layout:
 
-Backend follows layered architecture:
+- frontend
+- backend
+- docker-compose.yml
+- .github/workflows/deploy.yml
 
-- routes -> controllers -> services -> repositories -> database
+## Requirement Coverage
 
-Core backend design decisions:
+### 1) Users and Access
 
-- REST API for clear, simple client/server communication
-- JWT for stateless auth and easy horizontal scaling
-- Computed field status (not persisted) to keep business state derivable from canonical data
-- Env-driven configuration for deploy flexibility
+- Roles implemented:
+  - ADMIN (Coordinator)
+  - FIELD_AGENT
+- Authentication:
+  - Login endpoint returns JWT
+  - Password hashing with bcrypt
+- Authorization:
+  - Admin can access all fields and dashboards
+  - Agent can only access assigned fields and submit updates on assigned fields
+
+### 2) Field Management
+
+- Admin can create fields
+- Admin can assign field agents to fields
+- Fields include:
+  - name
+  - crop type
+  - planting date
+  - current stage
+
+### 3) Field Updates
+
+- Field agents can:
+  - update field stage
+  - add notes
+- Admin can:
+  - view all fields
+  - monitor updates across all agents
+
+### 4) Field Stages
+
+Implemented lifecycle:
+
+- PLANTED
+- GROWING
+- READY
+- HARVESTED
+
+### 5) Computed Field Status Logic
+
+Computed in backend service layer (not stored in DB):
+
+- COMPLETED: when stage is HARVESTED
+- AT_RISK: when no update for configured number of days OR field remains too long in the same stage
+- ACTIVE: all other cases
+
+This design avoids stale status values and keeps status consistent with latest field updates.
+
+### 6) Dashboard
+
+- Admin dashboard:
+  - total fields
+  - status breakdown
+  - table of fields
+  - assign agents
+- Field agent dashboard:
+  - assigned fields
+  - stage update form
+  - notes entry
+  - activity timeline
+
+## Architecture and Design Decisions
+
+- Layered backend architecture:
+  - routes -> controllers -> services -> repositories -> db
+- REST API design for clear separation between frontend and backend
+- Stateless backend via JWT for scalability
+- PostgreSQL normalized schema with foreign keys and enums
+- Environment variable based configuration for portability
 
 ## Data Model
 
-PostgreSQL normalized schema:
+users:
 
-- `users`
-  - `id` UUID
-  - `name`
-  - `email` unique
-  - `password_hash`
-  - `role` enum (`ADMIN`, `FIELD_AGENT`)
-- `fields`
-  - `id` UUID
-  - `name`
-  - `crop_type`
-  - `planting_date`
-  - `current_stage` enum (`PLANTED`, `GROWING`, `READY`, `HARVESTED`)
-  - `assigned_agent_id` FK -> `users.id`
-- `field_updates`
-  - `id` UUID
-  - `field_id` FK -> `fields.id`
-  - `agent_id` FK -> `users.id`
-  - `stage`
-  - `note`
-  - `created_at`
+- id (UUID)
+- name
+- email (unique)
+- password_hash
+- role (ADMIN, FIELD_AGENT)
 
-Assumption:
+fields:
 
-- One assigned agent per field at a time
+- id (UUID)
+- name
+- crop_type
+- planting_date
+- current_stage (PLANTED, GROWING, READY, HARVESTED)
+- assigned_agent_id (FK to users.id)
 
-## Auth and Roles
+field_updates:
 
-JWT auth with role authorization middleware:
-
-- `ADMIN`
-  - Can view all fields
-  - Can create fields
-  - Can assign agents to fields
-- `FIELD_AGENT`
-  - Can only access fields assigned to them
-  - Can post updates to assigned fields only
-
-## Computed Field Status Logic
-
-Computed in service layer and returned by API:
-
-- `COMPLETED`: field stage is `HARVESTED`
-- `AT_RISK`: no update for `AT_RISK_NO_UPDATE_DAYS` OR stuck too long in same stage (`AT_RISK_STUCK_STAGE_DAYS`)
-- `ACTIVE`: otherwise
+- id (UUID)
+- field_id (FK to fields.id)
+- agent_id (FK to users.id)
+- stage
+- note
+- created_at
 
 ## API Endpoints
 
 Auth:
 
-- `POST /auth/login`
+- POST /auth/login
 
 Fields:
 
-- `GET /fields`
-- `GET /fields/:id`
-- `POST /fields` (admin)
-- `PATCH /fields/:id` (admin)
-- `PATCH /fields/:id/assign` (admin)
+- GET /fields
+- GET /fields/:id
+- POST /fields (admin)
+- PATCH /fields/:id (admin)
+- PATCH /fields/:id/assign (admin)
 
 Updates:
 
-- `POST /fields/:id/updates` (agent)
-- `GET /fields/:id/updates`
+- POST /fields/:id/updates (agent)
+- GET /fields/:id/updates
 
 Dashboard:
 
-- `GET /dashboard/admin`
-- `GET /dashboard/agent`
+- GET /dashboard/admin
+- GET /dashboard/agent
 
-## Demo Credentials
+## Setup Instructions
 
-Seeded automatically when `SEED_DEMO=true`:
+### Option A: Docker (recommended)
 
-- Admin:
-  - email: `admin@example.com`
-  - password: `Admin123!`
-- Agent:
-  - email: `agent@example.com`
-  - password: `Agent123!`
+1. Clone repository.
+2. Create root .env from .env.example.
+3. Run:
 
-## Environment Variables
+   docker-compose up --build
 
-Copy from `.env.example` (root):
+4. Access services:
 
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `JWT_SECRET`
-- `JWT_EXPIRES_IN`
-- `AT_RISK_NO_UPDATE_DAYS`
-- `AT_RISK_STUCK_STAGE_DAYS`
-- `SEED_DEMO`
-- `VITE_API_BASE_URL`
+- Frontend: http://localhost:3000
+- Backend: http://localhost:5000
+- PostgreSQL: localhost:5433
 
-Backend local `.env.example` is in `backend/.env.example`.
-
-## Run with Docker
-
-```bash
-docker-compose up --build
-```
-
-Services:
-
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:5000`
-- PostgreSQL: `localhost:5433`
-
-## Local Development (without Docker)
+### Option B: Local development
 
 Backend:
 
-```bash
-cd backend
-npm install
-npm run dev
-```
+1. Go to backend folder.
+2. Create backend .env from backend/.env.example.
+3. Install dependencies and run:
+
+   npm install
+   npm run dev
 
 Frontend:
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+1. Go to frontend folder.
+2. Install dependencies and run:
 
-## Bonus Features Included
+   npm install
+   npm run dev
 
-- Seeded demo data
-- Pagination and filters on fields endpoint
-- Activity timeline per field (agent view)
+## Environment Variables
+
+Root .env (for Docker Compose):
+
+- POSTGRES_DB
+- POSTGRES_USER
+- POSTGRES_PASSWORD
+- JWT_SECRET
+- JWT_EXPIRES_IN
+- AT_RISK_NO_UPDATE_DAYS
+- AT_RISK_STUCK_STAGE_DAYS
+- SEED_DEMO
+- VITE_API_BASE_URL
+
+Backend local file:
+
+- backend/.env.example
+
+## Demo Credentials
+
+When SEED_DEMO=true:
+
+- Admin:
+  - Email: admin@example.com
+  - Password: Admin123!
+- Field Agent:
+  - Email: agent@example.com
+  - Password: Agent123!
+
+## Assumptions
+
+- One agent is assigned per field at a time.
+- Admin manages field assignment and can view all records.
+- Agent visibility is restricted to assigned fields only.
+
+## Bonus Features Implemented
+
+- Seed script behavior integrated at startup
+- Pagination and filtering on fields listing
+- Agent activity timeline for field updates
+- CI/CD workflow with image build, push, and VM deployment
+
+## Screenshot Placeholders
+
+Add two screenshots before submission:
+
+1. Admin dashboard view
+
+  
+
+2. Field agent dashboard view
+
+   Insert image here: assets/agent-dashboard.png
+
+## Submission Checklist
+
+Before sending submission email:
+
+1. Ensure repository is public or access is granted.
+2. Ensure README is up to date.
+3. Confirm demo credentials work.
+4. Attach or include the two dashboard screenshots.
+5. Include deployment access details if live deployment is provided.
+
+## Suggested Submission Email Template
+
+Subject: Full Stack Developer Technical Assessment Submission - SmartSeason Field Monitoring System
+
+Body:
+
+- Repository:(https://github.com/njange/SmartSeason)
+- Live URL:(https://smart-season-liard.vercel.app/)
+- Demo credentials:
+  - Admin: admin@example.com / Admin123!
+  - Agent: agent@example.com / Agent123!
+- Notes:
+  - Built with React + Node.js + PostgreSQL
+  - Dockerized deployment included
+  - CI/CD workflow included

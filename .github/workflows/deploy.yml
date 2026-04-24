@@ -1,0 +1,164 @@
+name: Build and Deploy to VM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      backend_image: ${{ steps.meta.outputs.backend_image }}
+      frontend_image: ${{ steps.meta.outputs.frontend_image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image names
+        id: meta
+        run: |
+          echo "backend_image=${{ secrets.DOCKERHUB_USERNAME }}/shamba-backend:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${{ secrets.DOCKERHUB_USERNAME }}/shamba-frontend:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.backend_image }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/shamba-backend:latest
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.frontend_image }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/shamba-frontend:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+
+            APP_DIR="$HOME/shamba"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone "$REPO_URL" "$APP_DIR"
+            else
+              git -C "$APP_DIR" fetch origin
+              git -C "$APP_DIR" reset --hard "origin/main"
+            fi
+
+            cd "$APP_DIR"
+
+            cat > .env <<EOF
+            POSTGRES_DB=shamba
+            POSTGRES_USER=postgres
+            POSTGRES_PASSWORD=postgres
+            JWT_SECRET=change-this-secret
+            JWT_EXPIRES_IN=1d
+            AT_RISK_NO_UPDATE_DAYS=10
+            AT_RISK_STUCK_STAGE_DAYS=14
+            SEED_DEMO=true
+            VITE_API_BASE_URL=http://${{ secrets.VM_HOST }}:5000
+            BACKEND_IMAGE=${{ needs.build-and-push.outputs.backend_image }}
+            FRONTEND_IMAGE=${{ needs.build-and-push.outputs.frontend_image }}
+            EOF
+
+            cat > docker-compose.ci.yml <<'EOF'
+            services:
+              db:
+                image: postgres:16-alpine
+                container_name: shamba-db
+                restart: unless-stopped
+                environment:
+                  POSTGRES_DB: ${POSTGRES_DB:-shamba}
+                  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+                  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+                volumes:
+                  - postgres_data:/var/lib/postgresql/data
+                ports:
+                  - "5432:5432"
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-shamba}"]
+                  interval: 5s
+                  timeout: 5s
+                  retries: 10
+
+              backend:
+                image: ${BACKEND_IMAGE}
+                container_name: shamba-backend
+                restart: unless-stopped
+                environment:
+                  NODE_ENV: production
+                  PORT: 5000
+                  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-shamba}
+                  JWT_SECRET: ${JWT_SECRET:-super-secret-change-me}
+                  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+                  AT_RISK_NO_UPDATE_DAYS: ${AT_RISK_NO_UPDATE_DAYS:-10}
+                  AT_RISK_STUCK_STAGE_DAYS: ${AT_RISK_STUCK_STAGE_DAYS:-14}
+                  SEED_DEMO: ${SEED_DEMO:-true}
+                depends_on:
+                  db:
+                    condition: service_healthy
+                ports:
+                  - "5000:5000"
+
+              frontend:
+                image: ${FRONTEND_IMAGE}
+                container_name: shamba-frontend
+                restart: unless-stopped
+                environment:
+                  VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:5000}
+                depends_on:
+                  - backend
+                ports:
+                  - "3000:3000"
+
+            volumes:
+              postgres_data:
+            EOF
+
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE_CMD="docker compose"
+            else
+              COMPOSE_CMD="docker-compose"
+            fi
+
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+            $COMPOSE_CMD -f docker-compose.ci.yml pull
+            $COMPOSE_CMD -f docker-compose.ci.yml up -d --remove-orphans

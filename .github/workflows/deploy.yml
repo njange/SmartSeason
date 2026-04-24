@@ -63,14 +63,20 @@ jobs:
     needs: build-and-push
 
     steps:
+      - name: Prepare SSH client
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.ssh"
+          printf '%s' '${{ secrets.VM_SSH_KEY }}' | perl -pe 's/\\n/\n/g' | tr -d '\r' > "$HOME/.ssh/vm_key"
+          chmod 600 "$HOME/.ssh/vm_key"
+          ssh-keyscan -H '${{ secrets.VM_HOST }}' >> "$HOME/.ssh/known_hosts"
+
       - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script_stop: true
-          script: |
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/vm_key" '${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}' <<'EOF'
             set -e
 
             APP_DIR="$HOME/shamba"
@@ -85,7 +91,7 @@ jobs:
 
             cd "$APP_DIR"
 
-            cat > .env <<EOF
+            cat > .env <<ENVEOF
             POSTGRES_DB=shamba
             POSTGRES_USER=postgres
             POSTGRES_PASSWORD=postgres
@@ -97,9 +103,9 @@ jobs:
             VITE_API_BASE_URL=http://${{ secrets.VM_HOST }}:5000
             BACKEND_IMAGE=${{ needs.build-and-push.outputs.backend_image }}
             FRONTEND_IMAGE=${{ needs.build-and-push.outputs.frontend_image }}
-            EOF
+            ENVEOF
 
-            cat > docker-compose.ci.yml <<'EOF'
+            cat > docker-compose.ci.yml <<'COMPOSEEOF'
             services:
               db:
                 image: postgres:16-alpine
@@ -151,7 +157,7 @@ jobs:
 
             volumes:
               postgres_data:
-            EOF
+            COMPOSEEOF
 
             if docker compose version >/dev/null 2>&1; then
               COMPOSE_CMD="docker compose"
@@ -162,3 +168,4 @@ jobs:
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
             $COMPOSE_CMD -f docker-compose.ci.yml pull
             $COMPOSE_CMD -f docker-compose.ci.yml up -d --remove-orphans
+          EOF

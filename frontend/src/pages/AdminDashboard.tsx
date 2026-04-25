@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { assignFieldApi, createFieldApi, getAdminDashboardApi, getFieldsApi } from '../api';
 import type { CropStage, FieldStatus } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
+import { FieldMap } from '../components/FieldMap';
+import { FieldImageTimeline } from '../components/FieldImageTimeline';
+import { FieldLocationPicker } from '../components/FieldLocationPicker';
 
 const stages: CropStage[] = ['PLANTED', 'GROWING', 'READY', 'HARVESTED'];
 
@@ -13,12 +16,15 @@ export function AdminDashboard() {
   const [limit] = useState(20);
   const [status, setStatus] = useState<FieldStatus | ''>('');
   const [cropType, setCropType] = useState('');
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
 
   const [createForm, setCreateForm] = useState({
     name: '',
     cropType: '',
     plantingDate: new Date().toISOString().slice(0, 10),
-    currentStage: 'PLANTED' as CropStage
+    currentStage: 'PLANTED' as CropStage,
+    latitude: null as number | null,
+    longitude: null as number | null
   });
 
   const adminQuery = useQuery({
@@ -36,16 +42,27 @@ export function AdminDashboard() {
     })
   });
 
+  const mapFieldsQuery = useQuery({
+    queryKey: ['fields-map'],
+    queryFn: () => getFieldsApi({
+      page: 1,
+      limit: 1000
+    })
+  });
+
   const createMutation = useMutation({
     mutationFn: createFieldApi,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fields'] });
+      queryClient.invalidateQueries({ queryKey: ['fields-map'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-admin'] });
       setCreateForm({
         name: '',
         cropType: '',
         plantingDate: new Date().toISOString().slice(0, 10),
-        currentStage: 'PLANTED'
+        currentStage: 'PLANTED',
+        latitude: null,
+        longitude: null
       });
     }
   });
@@ -75,7 +92,7 @@ export function AdminDashboard() {
 
       <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
         <h2 className="text-xl font-bold">Create Field</h2>
-        <form className="mt-4 grid gap-3 md:grid-cols-4" onSubmit={onCreateField}>
+        <form className="mt-4 grid gap-3 md:grid-cols-3" onSubmit={onCreateField}>
           <input
             className="rounded-lg border border-slate-300 px-3 py-2"
             placeholder="Field name"
@@ -107,12 +124,28 @@ export function AdminDashboard() {
                 <option key={stage} value={stage}>{stage}</option>
               ))}
             </select>
-            <button className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white hover:bg-emerald-800" type="submit">
-              Add
-            </button>
           </div>
+          <FieldLocationPicker
+            value={{ latitude: createForm.latitude, longitude: createForm.longitude }}
+            onChange={(location) => setCreateForm((old) => ({ ...old, ...location }))}
+          />
+          <button className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white hover:bg-emerald-800 md:col-span-3" type="submit">
+            Add
+          </button>
         </form>
       </section>
+
+      <FieldMap
+        title="All Field Locations"
+        fields={(mapFieldsQuery.data?.items ?? []).map((field) => ({
+          id: field.id,
+          name: field.name,
+          cropType: field.cropType,
+          latitude: field.latitude,
+          longitude: field.longitude,
+          latestImageUrl: field.latestImageUrl
+        }))}
+      />
 
       <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -153,6 +186,7 @@ export function AdminDashboard() {
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Assigned Agent</th>
                 <th className="px-3 py-2">Assign</th>
+                <th className="px-3 py-2">Images</th>
               </tr>
             </thead>
             <tbody>
@@ -179,11 +213,29 @@ export function AdminDashboard() {
                       ))}
                     </select>
                   </td>
+                  <td className="px-3 py-3">
+                    <button
+                      className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      onClick={() => setSelectedFieldId((id) => (id === field.id ? null : field.id))}
+                      type="button"
+                    >
+                      {selectedFieldId === field.id ? 'Hide timeline' : 'View timeline'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {selectedFieldId ? (
+          <div className="mt-4 rounded-xl bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Field Image Timeline</h3>
+            <div className="mt-3">
+              <FieldImageTimeline fieldId={selectedFieldId} />
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-4 flex items-center justify-between">
           <p className="text-sm text-slate-600">Page {page} of {totalPages}</p>

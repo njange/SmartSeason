@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createFieldUpdateApi, getAgentDashboardApi, getFieldUpdatesApi } from '../api';
+import { createFieldUpdateApi, getAgentDashboardApi, getFieldUpdatesApi, uploadFieldImageApi } from '../api';
 import type { CropStage } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
+import { FieldMap } from '../components/FieldMap';
+import { FieldImageTimeline } from '../components/FieldImageTimeline';
 
 const stages: CropStage[] = ['PLANTED', 'GROWING', 'READY', 'HARVESTED'];
 
@@ -30,6 +32,18 @@ export function AgentDashboard() {
         <p className="text-sm text-slate-600">Assigned Fields</p>
         <p className="mt-2 text-3xl font-bold text-emerald-700">{dashboardQuery.data?.totals.assignedFields ?? 0}</p>
       </section>
+
+      <FieldMap
+        title="Assigned Field Locations"
+        fields={(dashboardQuery.data?.fields ?? []).map((field) => ({
+          id: field.id,
+          name: field.name,
+          cropType: field.cropType,
+          latitude: field.latitude,
+          longitude: field.longitude,
+          latestImageUrl: field.latestImageUrl
+        }))}
+      />
 
       <section className="grid gap-4 md:grid-cols-2">
         {dashboardQuery.data?.fields.map((field) => (
@@ -62,6 +76,9 @@ function FieldCard(props: {
 }) {
   const [stage, setStage] = useState<CropStage>(props.currentStage);
   const [note, setNote] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageNote, setImageNote] = useState('');
+  const queryClient = useQueryClient();
 
   const updatesQuery = useQuery({
     queryKey: ['field-updates', props.fieldId],
@@ -69,10 +86,33 @@ function FieldCard(props: {
     enabled: props.expanded
   });
 
+  const uploadImageMutation = useMutation({
+    mutationFn: ({ image, note: uploadNote }: { image: File; note?: string }) =>
+      uploadFieldImageApi(props.fieldId, { image, note: uploadNote }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['field-images', props.fieldId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-agent'] });
+      setImageFile(null);
+      setImageNote('');
+    }
+  });
+
   function submitUpdate(event: FormEvent) {
     event.preventDefault();
     props.onSubmit(stage, note.trim() || undefined);
     setNote('');
+  }
+
+  function submitImage(event: FormEvent) {
+    event.preventDefault();
+    if (!imageFile) {
+      return;
+    }
+
+    uploadImageMutation.mutate({
+      image: imageFile,
+      note: imageNote.trim() || undefined
+    });
   }
 
   return (
@@ -114,13 +154,51 @@ function FieldCard(props: {
       </button>
 
       {props.expanded ? (
-        <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3 text-sm">
-          {updatesQuery.data?.length ? updatesQuery.data.map((update) => (
-            <div key={update.id} className="rounded border border-slate-200 bg-white p-2">
-              <p className="font-semibold">{update.stage} - {new Date(update.created_at).toLocaleString()}</p>
-              <p className="text-slate-700">{update.note || 'No note'}</p>
+        <div className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3 text-sm">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Stage Activity</p>
+            <div className="mt-2 space-y-2">
+              {updatesQuery.data?.length ? updatesQuery.data.map((update) => (
+                <div key={update.id} className="rounded border border-slate-200 bg-white p-2">
+                  <p className="font-semibold">{update.stage} - {new Date(update.created_at).toLocaleString()}</p>
+                  <p className="text-slate-700">{update.note || 'No note'}</p>
+                </div>
+              )) : <p className="text-slate-600">No updates yet.</p>}
             </div>
-          )) : <p className="text-slate-600">No updates yet.</p>}
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Field Detail Upload</p>
+            <form className="mt-2 space-y-2" onSubmit={submitImage}>
+              <input
+                accept="image/jpeg,image/png"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
+                type="file"
+              />
+              <textarea
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                rows={2}
+                placeholder="Optional image note"
+                value={imageNote}
+                onChange={(event) => setImageNote(event.target.value)}
+              />
+              <button
+                className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                disabled={!imageFile || uploadImageMutation.isPending}
+                type="submit"
+              >
+                {uploadImageMutation.isPending ? 'Uploading...' : 'Upload Image'}
+              </button>
+            </form>
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Image Timeline</p>
+            <div className="mt-2">
+              <FieldImageTimeline fieldId={props.fieldId} />
+            </div>
+          </div>
         </div>
       ) : null}
     </article>

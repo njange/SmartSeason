@@ -228,11 +228,13 @@ Add two screenshots before submission:
 
 1. Admin dashboard view
 
-  
+  <img width="1915" height="993" alt="Screenshot 2026-04-24 112208" src="https://github.com/user-attachments/assets/6f2ea9ec-4774-4bd3-a672-2a37f35ef5b2" />
+
 
 2. Field agent dashboard view
 
-   Insert image here: assets/agent-dashboard.png
+   <img width="1901" height="989" alt="Screenshot 2026-04-24 111416" src="https://github.com/user-attachments/assets/88377025-c876-4813-ac73-5dfa8e6a60e7" />
+
 
 ## Submission Checklist
 

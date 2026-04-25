@@ -2,13 +2,17 @@ import { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env';
 import {
   addFieldUpdate,
+  addFieldImage,
   assignFieldToAgent,
+  createFieldImageSchema,
   createFieldRecord,
   getFieldByIdForUser,
+  getFieldImages,
   getFieldUpdates,
   getFieldsForUser,
   updateFieldRecord
 } from '../services/fieldService';
+import { AppError } from '../utils/errors';
 
 export async function listFieldsController(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -97,6 +101,44 @@ export async function listFieldUpdatesController(req: Request, res: Response, ne
       role: user.role
     });
     res.json(updates);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function uploadFieldImageController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = req.user!;
+    const parsedBody = createFieldImageSchema.parse(req.body);
+
+    if (!req.file) {
+      throw new AppError('Image file is required', 400);
+    }
+
+    const image = await addFieldImage({
+      fieldId: req.params.id,
+      agentId: user.id,
+      role: user.role,
+      fileBuffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      note: parsedBody.note
+    });
+
+    res.status(201).json(image);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listFieldImagesController(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = req.user!;
+    const images = await getFieldImages({
+      fieldId: req.params.id,
+      userId: user.id,
+      role: user.role
+    });
+    res.json(images);
   } catch (error) {
     next(error);
   }

@@ -19,6 +19,9 @@ export interface Field {
   currentStage: CropStage;
   assignedAgentId: string | null;
   assignedAgentName: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  latestImageUrl: string | null;
   computedStatus: FieldStatus;
   lastUpdateAt: string | null;
 }
@@ -52,6 +55,16 @@ export interface FieldUpdate {
   agent_id: string;
   agent_name: string;
   stage: CropStage;
+  note: string | null;
+  created_at: string;
+}
+
+export interface FieldImage {
+  id: string;
+  field_id: string;
+  agent_id: string | null;
+  agent_name: string | null;
+  image_url: string;
   note: string | null;
   created_at: string;
 }

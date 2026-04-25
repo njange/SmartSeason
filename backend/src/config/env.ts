@@ -18,5 +18,9 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '1d',
   atRiskNoUpdateDays: Number(process.env.AT_RISK_NO_UPDATE_DAYS ?? 10),
   atRiskStuckStageDays: Number(process.env.AT_RISK_STUCK_STAGE_DAYS ?? 14),
-  seedDemo: (process.env.SEED_DEMO ?? 'true').toLowerCase() === 'true'
+  seedDemo: (process.env.SEED_DEMO ?? 'true').toLowerCase() === 'true',
+  corsOrigin: process.env.CORS_ORIGIN ?? '*',
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET
 };

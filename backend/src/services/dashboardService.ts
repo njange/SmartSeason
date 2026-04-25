@@ -64,6 +64,9 @@ export async function getAgentDashboardData(input: {
         name: field.name,
         cropType: field.crop_type,
         currentStage: field.current_stage,
+        latitude: field.latitude,
+        longitude: field.longitude,
+        latestImageUrl: field.latest_image_url,
         computedStatus: status,
         plantingDate: field.planting_date,
         lastUpdateAt: lastUpdates[field.id]?.created_at ?? null

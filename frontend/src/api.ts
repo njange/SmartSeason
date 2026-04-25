@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { CropStage, DashboardAdmin, DashboardAgent, Field, FieldStatus, FieldUpdate, User } from './types';
+import type { CropStage, DashboardAdmin, DashboardAgent, Field, FieldImage, FieldStatus, FieldUpdate, User } from './types';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000'
@@ -48,6 +48,8 @@ export async function createFieldApi(input: {
   cropType: string;
   plantingDate: string;
   currentStage: CropStage;
+  latitude?: number | null;
+  longitude?: number | null;
 }) {
   const response = await api.post('/fields', input);
   return response.data;
@@ -65,5 +67,26 @@ export async function createFieldUpdateApi(fieldId: string, input: { stage: Crop
 
 export async function getFieldUpdatesApi(fieldId: string): Promise<FieldUpdate[]> {
   const response = await api.get<FieldUpdate[]>(`/fields/${fieldId}/updates`);
+  return response.data;
+}
+
+export async function uploadFieldImageApi(fieldId: string, input: { image: File; note?: string }): Promise<FieldImage> {
+  const formData = new FormData();
+  formData.append('image', input.image);
+  if (input.note) {
+    formData.append('note', input.note);
+  }
+
+  const response = await api.post<FieldImage>(`/fields/${fieldId}/images`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+
+  return response.data;
+}
+
+export async function getFieldImagesApi(fieldId: string): Promise<FieldImage[]> {
+  const response = await api.get<FieldImage[]>(`/fields/${fieldId}/images`);
   return response.data;
 }

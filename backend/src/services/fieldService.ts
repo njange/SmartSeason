@@ -6,6 +6,7 @@ import {
   listFieldsScoped,
   updateField
 } from '../repositories/fieldRepository';
+import { createFieldImage, listFieldImagesScoped } from '../repositories/fieldImageRepository';
 import {
   createFieldUpdate,
   getLastSameStageUpdate,
@@ -14,6 +15,7 @@ import {
 } from '../repositories/updateRepository';
 import { AppError } from '../utils/errors';
 import { CropStage, FieldComputedStatus, UserRole } from '../types';
+import { uploadImageToCloudinary } from './cloudinaryService';
 
 const stageEnum = z.enum(['PLANTED', 'GROWING', 'READY', 'HARVESTED']);
 
@@ -21,14 +23,18 @@ export const createFieldSchema = z.object({
   name: z.string().min(2),
   cropType: z.string().min(2),
   plantingDate: z.string().date(),
-  currentStage: stageEnum.default('PLANTED')
+  currentStage: stageEnum.default('PLANTED'),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional()
 });
 
 export const updateFieldSchema = z.object({
   name: z.string().min(2).optional(),
   cropType: z.string().min(2).optional(),
   plantingDate: z.string().date().optional(),
-  currentStage: stageEnum.optional()
+  currentStage: stageEnum.optional(),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional()
 });
 
 export const assignFieldSchema = z.object({
@@ -40,9 +46,13 @@ export const createUpdateSchema = z.object({
   note: z.string().max(400).optional()
 });
 
+export const createFieldImageSchema = z.object({
+  note: z.string().max(400).optional()
+});
+
 export const listFieldQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(1000).default(20),
   status: z.enum(['ACTIVE', 'AT_RISK', 'COMPLETED']).optional(),
   cropType: z.string().optional()
 });
@@ -111,6 +121,9 @@ export async function getFieldsForUser(input: {
         currentStage: row.current_stage,
         assignedAgentId: row.assigned_agent_id,
         assignedAgentName: row.assigned_agent_name,
+        latitude: row.latitude,
+        longitude: row.longitude,
+        latestImageUrl: row.latest_image_url,
         computedStatus,
         lastUpdateAt: lastUpdate?.created_at ?? null
       };
@@ -169,6 +182,9 @@ export async function getFieldByIdForUser(input: {
     currentStage: row.current_stage,
     assignedAgentId: row.assigned_agent_id,
     assignedAgentName: row.assigned_agent_name,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    latestImageUrl: row.latest_image_url,
     computedStatus,
     lastUpdateAt: lastUpdate?.created_at ?? null
   };
@@ -225,4 +241,40 @@ export async function getFieldUpdates(input: { fieldId: string; userId: string; 
   }
 
   return listFieldUpdates(input.fieldId, input.userId, input.role);
+}
+
+export async function addFieldImage(input: {
+  fieldId: string;
+  agentId: string;
+  role: UserRole;
+  fileBuffer: Buffer;
+  mimeType: string;
+  note?: string;
+}) {
+  const field = await findFieldByIdScoped(input.fieldId, input.agentId, input.role);
+  if (!field) {
+    throw new AppError('Field not found or not assigned to this agent', 404);
+  }
+
+  const imageUrl = await uploadImageToCloudinary({
+    buffer: input.fileBuffer,
+    mimeType: input.mimeType,
+    fieldId: input.fieldId
+  });
+
+  return createFieldImage({
+    fieldId: input.fieldId,
+    agentId: input.agentId,
+    imageUrl,
+    note: input.note
+  });
+}
+
+export async function getFieldImages(input: { fieldId: string; userId: string; role: UserRole }) {
+  const field = await findFieldByIdScoped(input.fieldId, input.userId, input.role);
+  if (!field) {
+    throw new AppError('Field not found', 404);
+  }
+
+  return listFieldImagesScoped(input.fieldId, input.userId, input.role);
 }
